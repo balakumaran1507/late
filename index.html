@@ -28,29 +28,32 @@
         const scannerElement = document.getElementById('scanner');
         let scanner;
 
-        // Initialize the scanner and start scanning QR codes
+        // Function to start the QR scanner
         function startScanner() {
             scanner = new Instascan.Scanner({ video: document.createElement('video') });
             scanner.addListener('scan', function (content) {
                 document.getElementById("status").textContent = "Scanning...";
 
-                // Extract student ID from the QR code content (assuming it's the student ID)
+                // Extract student ID from the QR code content
                 const studentId = content.trim(); // QR code content should be the student ID
 
                 // Send the student ID to the Google Apps Script (API)
                 sendStudentIdToServer(studentId);
             });
 
-            // Start the camera stream
+            // Check if the camera is available
             Instascan.Camera.getCameras().then(function (cameras) {
                 if (cameras.length > 0) {
-                    scanner.start(cameras[0]); // Start the first camera
-                    scannerElement.appendChild(scanner._video); // Attach video to HTML
+                    // Start the first camera
+                    scanner.start(cameras[0]);
+                    scannerElement.appendChild(scanner._video); // Attach the video stream to HTML element
                 } else {
                     console.error('No cameras found.');
+                    document.getElementById("status").textContent = "Error: No cameras found.";
                 }
             }).catch(function (e) {
-                console.error(e);
+                console.error('Error accessing camera: ', e);
+                document.getElementById("status").textContent = "Error: Camera access denied.";
             });
         }
 
@@ -82,8 +85,23 @@
                 });
         }
 
-        // Start scanning as soon as the page loads
-        window.onload = startScanner;
+        // Start scanning when the page is loaded
+        window.onload = function () {
+            // Check for camera permissions on page load
+            if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+                navigator.mediaDevices.getUserMedia({ video: true })
+                    .then(() => {
+                        startScanner(); // Start scanning if the camera is available
+                    })
+                    .catch(err => {
+                        console.error('Camera permission error:', err);
+                        document.getElementById("status").textContent = "Error: Camera permission denied.";
+                    });
+            } else {
+                console.error('Camera not supported.');
+                document.getElementById("status").textContent = "Error: Camera not supported.";
+            }
+        };
     </script>
 </body>
 
