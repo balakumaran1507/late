@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Late Attendance QR Code Scanner</title>
+    <title>Student Late Scanner</title>
     <style>
         #scanner {
             width: 100%;
@@ -24,73 +24,78 @@
         .error {
             color: red;
         }
+
+        #barcodeOutput {
+            font-size: 20px;
+            font-weight: bold;
+        }
     </style>
 </head>
 
 <body>
-    <h1>Scan QR Code for Late Attendance</h1>
+    <h1>Scan Student Barcode</h1>
     <div id="scanner"></div>
     <h2>Status: <span id="status">Waiting...</span></h2>
+    <p id="barcodeOutput">Scanned Barcode: <span id="barcodeText">None</span></p>
 
-    <!-- Include jsQR for QR code scanning -->
-    <script src="https://cdn.jsdelivr.net/npm/jsqr/dist/jsQR.js"></script>
+    <!-- Include QuaggaJS -->
+    <script src="https://unpkg.com/quagga@0.12.1/dist/quagga.min.js"></script>
 
     <script>
-        // Initialize the camera and start scanning
-        const videoElement = document.createElement("video");
-        const canvasElement = document.createElement("canvas");
-        const canvasContext = canvasElement.getContext("2d");
-
-        // Access the camera
-        navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } })
-            .then(function (stream) {
-                videoElement.srcObject = stream;
-                videoElement.setAttribute("autoplay", true);
-                videoElement.setAttribute("playsinline", true);
-                videoElement.width = 320;
-                videoElement.height = 240;
-                document.getElementById("scanner").appendChild(videoElement);
-
-                // Continuously scan the video feed
-                requestAnimationFrame(scanQRCode);
-            })
-            .catch(function (err) {
-                console.error("Camera error:", err);
-                document.getElementById("status").textContent = "Error accessing camera.";
-                document.getElementById("status").classList.add("error");
+        // Initialize Quagga for barcode scanning
+        function startScanner() {
+            Quagga.init({
+                inputStream: {
+                    type: "LiveStream",
+                    target: document.querySelector('#scanner'), // where the video will be displayed
+                    constraints: {
+                        facingMode: "environment" // Use the device's back camera
+                    }
+                },
+                decoder: {
+                    readers: ["code_128_reader", "ean_reader", "ean_13_reader", "upc_reader"] // Supported barcode formats
+                }
+            }, function (err) {
+                if (err) {
+                    console.error(err);
+                    document.getElementById("status").textContent = "Error starting scanner.";
+                    document.getElementById("status").classList.add("error");
+                    return;
+                }
+                Quagga.start(); // Start scanning
+                document.getElementById("status").textContent = "Scanner started, waiting for barcode...";
             });
 
-        // Function to scan the QR code from the video stream
-        function scanQRCode() {
-            if (videoElement.readyState === videoElement.HAVE_ENOUGH_DATA) {
-                canvasElement.width = videoElement.videoWidth;
-                canvasElement.height = videoElement.videoHeight;
-                canvasContext.drawImage(videoElement, 0, 0, canvasElement.width, canvasElement.height);
+            // Handle barcode detection
+            Quagga.onDetected(function (result) {
+                const barcode = result.codeResult.code;
 
-                const imageData = canvasContext.getImageData(0, 0, canvasElement.width, canvasElement.height);
-                const code = jsQR(imageData.data, imageData.width, imageData.height);
+                // Indicate scanning status
+                document.getElementById("status").textContent = "Barcode Detected!";
+                document.getElementById("status").classList.remove("error");
+                document.getElementById("status").classList.add("success");
 
-                if (code) {
-                    // Display QR Code content
-                    const studentId = code.data;
-                    document.getElementById("status").textContent = "QR Code Detected!";
-                    document.getElementById("status").classList.remove("error");
-                    document.getElementById("status").classList.add("success");
+                // Display the scanned barcode
+                document.getElementById("barcodeText").textContent = barcode;
 
-                    // Send the student ID to Google Apps Script
-                    sendQRCodeData(studentId);
+                // Send the barcode data to Google Apps Script
+                sendBarcodeToServer(barcode);
+            });
+
+            // Handle scanning errors
+            Quagga.onProcessed(function (result) {
+                if (!result) {
+                    document.getElementById("status").textContent = "Error processing barcode.";
+                    document.getElementById("status").classList.add("error");
                 }
-            }
-
-            // Continue scanning
-            requestAnimationFrame(scanQRCode);
+            });
         }
 
-        // Send QR Code data to Google Apps Script
-        function sendQRCodeData(studentId) {
-            const url = 'https://script.google.com/macros/s/AKfycbwR0UqeAjYBGjwTkffX-rs5QSC3s1cGfdppC6z6mEBgNgI-yFAhsJ82GQ5nQP5eFyf6/exec'; // Replace with your actual Google Apps Script URL
+        // Send barcode data to the Google Apps Script (API)
+        function sendBarcodeToServer(barcode) {
+            const url = 'https://script.google.com/macros/s/AKfycbwR0UqeAjYBGjwTkffX-rs5QSC3s1cGfdppC6z6mEBgNgI-yFAhsJ82GQ5nQP5eFyf6/exec'; // Replace with your Google Apps Script URL
             const data = new URLSearchParams();
-            data.append("studentId", studentId);
+            data.append("barcode", barcode);
 
             fetch(url, {
                 method: 'POST',
@@ -99,15 +104,11 @@
                     'Content-Type': 'application/x-www-form-urlencoded'
                 }
             })
-                .then(response => response.json())
+                .then(response => response.text())
                 .then(data => {
-                    if (data.status === 'success') {
-                        document.getElementById("status").textContent = "Attendance Updated Successfully!";
-                        document.getElementById("status").classList.add("success");
-                    } else {
-                        document.getElementById("status").textContent = "Error: " + data.message;
-                        document.getElementById("status").classList.add("error");
-                    }
+                    console.log(data);
+                    document.getElementById("status").textContent = "Status Updated!";
+                    document.getElementById("status").classList.add("success");
                 })
                 .catch((error) => {
                     console.error('Error:', error);
@@ -115,6 +116,9 @@
                     document.getElementById("status").classList.add("error");
                 });
         }
+
+        // Start scanning on page load
+        window.onload = startScanner;
     </script>
 </body>
 
