@@ -65,7 +65,7 @@
     <h2>Status:</h2>
     <p id="status">Waiting for QR code scan...</p>
 
-    <!-- Include QuaggaJS -->
+    <!-- Include ZXing library -->
     <script src="https://unpkg.com/@zxing/library@0.18.6/dist/index.min.js"></script>
 
     <script>
@@ -102,13 +102,13 @@
             })
                 .then(response => response.json())
                 .then(data => {
-                    document.getElementById("student-name").textContent = `Student Name: ${data.message}`;
+                    document.getElementById("student-name").textContent = `Student Name: ${data.name}`;
                     document.getElementById("status").textContent = "Attendance Updated Successfully!";
                     document.getElementById("status").classList.add("success");
                 })
                 .catch(error => {
                     console.error('Error:', error);
-                    document.getElementById("status").textContent = "Error updating attendance";
+                    document.getElementById("status").textContent = "Error updating status";
                     document.getElementById("status").classList.add("error");
                 });
         }
