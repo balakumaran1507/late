@@ -4,117 +4,88 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Student Late Attendance</title>
-    <style>
-        body {
-            font-family: Arial, sans-serif;
-            background-color: #f4f4f4;
-            text-align: center;
-            padding: 20px;
-        }
-
-        h1 {
-            color: #333;
-        }
-
-        #scanner {
-            margin: 20px 0;
-            border: 2px dashed #000;
-            display: inline-block;
-            width: 80%;
-            max-width: 400px;
-            height: 300px;
-        }
-
-        #status {
-            font-size: 20px;
-            font-weight: bold;
-            margin-top: 20px;
-        }
-
-        .success {
-            color: green;
-        }
-
-        .error {
-            color: red;
-        }
-
-        button {
-            padding: 10px;
-            margin: 20px;
-            background-color: #4CAF50;
-            color: white;
-            border: none;
-            cursor: pointer;
-        }
-
-        button:hover {
-            background-color: #45a049;
-        }
-    </style>
+    <title>Student Attendance</title>
+    <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
 </head>
 
 <body>
-    <h1>Scan QR Code to Mark Attendance</h1>
-    <div id="scanner"></div>
-    <p>Please scan the student's QR code</p>
-    <h2>Student Info:</h2>
-    <p id="student-name"></p>
+    <h1>Scan Student QR Code</h1>
 
-    <h2>Status:</h2>
-    <p id="status">Waiting for QR code scan...</p>
+    <div>
+        <video id="scanner" width="100%" height="auto" style="border: 1px solid black;"></video>
+        <div id="result"></div>
+    </div>
 
-    <!-- Include ZXing library -->
-    <script src="https://unpkg.com/@zxing/library@0.18.6/dist/index.min.js"></script>
+    <button onclick="markAttendance()">Mark Attendance</button>
 
     <script>
-        let codeReader;
+        // Access the camera and start scanning
+        const videoElement = document.getElementById("scanner");
+        const canvasElement = document.createElement("canvas");
+        const canvasContext = canvasElement.getContext("2d");
 
-        // Initialize the scanner
-        function startScanner() {
-            codeReader = new ZXing.BrowserQRCodeReader();
-            codeReader.decodeFromInputVideoDevice(null, 'scanner')
-                .then(result => {
-                    const studentId = result.text; // QR code content
-                    document.getElementById("status").textContent = "QR Code Detected! Updating status...";
-                    sendQRCodeData(studentId);
-                })
-                .catch(err => {
-                    console.error(err);
-                    document.getElementById("status").textContent = "Error: Could not read QR code";
-                    document.getElementById("status").classList.add("error");
+        let studentId = null;
+
+        // Start the video stream
+        navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } })
+            .then(stream => {
+                videoElement.srcObject = stream;
+                videoElement.setAttribute("playsinline", true); // for iOS compatibility
+                videoElement.play();
+                requestAnimationFrame(scanQRCode);
+            })
+            .catch(err => {
+                console.error("Error accessing camera: ", err);
+            });
+
+        // Continuously scan for QR code
+        function scanQRCode() {
+            if (videoElement.readyState === videoElement.HAVE_ENOUGH_DATA) {
+                canvasElement.height = videoElement.videoHeight;
+                canvasElement.width = videoElement.videoWidth;
+                canvasContext.drawImage(videoElement, 0, 0, canvasElement.width, canvasElement.height);
+                const imageData = canvasContext.getImageData(0, 0, canvasElement.width, canvasElement.height);
+                const code = jsQR(imageData.data, imageData.width, imageData.height, {
+                    inversionAttempts: "dontInvert"
                 });
+
+                if (code) {
+                    // If QR code is detected, show the result and store student ID
+                    studentId = code.data;
+                    document.getElementById('result').innerText = "Detected Student ID: " + studentId;
+                }
+            }
+
+            // Keep scanning
+            requestAnimationFrame(scanQRCode);
         }
 
-        // Send QR code data to Google Apps Script
-        function sendQRCodeData(studentId) {
-            const url = 'https://script.google.com/macros/s/AKfycbxtq8eozk7XnVguYr8M7Zy8FoboRos8xVig6d52y8qzWJDguLjrkFuKJLwz-KDYbgA-/exec';
-            const data = new URLSearchParams();
-            data.append("studentId", studentId);
+        // Send the attendance status to the Google Sheet
+        function markAttendance() {
+            if (!studentId) {
+                alert("No QR code detected.");
+                return;
+            }
 
-            fetch(url, {
+            // Send data to Google Sheets (replace with your Apps Script URL)
+            fetch('https://script.google.com/macros/s/AKfycbyYxQHvIvdWfC6yln1zFL7Brmw7j5ekEkzMECB405A6FuSHUEl181bdYi-Dh_83qVlL/exec', {
                 method: 'POST',
-                body: data,
-                headers: {
-                    'Content-Type': 'application/x-www-form-urlencoded'
-                }
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    studentId: studentId,  // Send the detected studentId
+                    status: 'late'         // Mark attendance as 'late'
+                })
             })
-                .then(response => response.json())
+                .then(response => response.text())
                 .then(data => {
-                    document.getElementById("student-name").textContent = `Student Name: ${data.name}`;
-                    document.getElementById("status").textContent = "Attendance Updated Successfully!";
-                    document.getElementById("status").classList.add("success");
+                    alert(data);  // Show the response from Apps Script
+                    document.getElementById('result').innerText = `Attendance marked as 'late' for Student ID: ${studentId}.`;
                 })
                 .catch(error => {
                     console.error('Error:', error);
-                    document.getElementById("status").textContent = "Error updating status";
-                    document.getElementById("status").classList.add("error");
+                    alert("Error marking attendance");
                 });
         }
-
-        // Start scanning when page loads
-        window.onload = startScanner;
     </script>
 </body>
 
